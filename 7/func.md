@@ -67,7 +67,7 @@ const zend_function_entry mytest_functions[] = {
 #define ZEND_FENTRY(zend_name, name, arg_info, flags)   { #zend_name, name, arg_info, (uint32_t) (sizeof(arg_info)/sizeof(struct _zend_internal_arg_info)-1), flags },
 #define ZEND_FN(name) zif_##name
 ```
-最后将`zend_module_entry->functions`设置为`timeout_functions`即可：
+最后将`zend_module_entry->functions`设置为`mytest_functions`即可：
 ```c
 zend_module_entry mytest_module_entry = {
     STANDARD_MODULE_HEADER,
@@ -123,7 +123,7 @@ PHP_FUNCTION(my_func_1)
 
 ![](../img/internal_func_param.png)
 
-注意：解析时除了整形、浮点型、布尔型是直接硬拷贝value外，其它解析到的变量只能是指针，arr为zend_execute_data上param_1的地址，即：`zval *arr = &param_1`，所以图中arr、param_1之间用的不是箭头指向，也就是说参数始终存储在zend_execute_data上，解析获取的是这些参数的地址。`zend_parse_parameters()`调用了`zend_parse_va_args()`进行处理，简单看下解析过程：
+注意：解析时除了整形、浮点型、布尔型是直接硬拷贝value外，其它解析到的变量只能是指针，arr为zend_execute_data上param_1的地址，即：`zval *arr = &param_1`，也就是说参数始终存储在zend_execute_data上，解析获取的是这些参数的地址。`zend_parse_parameters()`调用了`zend_parse_va_args()`进行处理，简单看下解析过程：
 ```c
 //va就是定义的要解析到的各个变量的地址
 static int zend_parse_va_args(int num_args, const char *type_spec, va_list *va, int flags)
@@ -229,7 +229,7 @@ static zend_always_inline int zend_parse_arg_long(zval *arg, zend_long *dest, ze
     return 1;
 }
 ```
-> __Note:__ "l"与"L"的区别在于，当传参不是整形且转为整形后超过了整形的大小范围时，"L"将值调整为整形的最大或最小值，而"l"将报错，比如传的参数是字符串"9223372036854775808"，转整形后超过了unsigned int64的最大值：0xFFFFFFFFFFFFFFFF，"L"将解析为0xFFFFFFFFFFFFFFFF。
+> __Note:__ "l"与"L"的区别在于，当传参不是整形且转为整形后超过了整形的大小范围时，"L"将值调整为整形的最大或最小值，而"l"将报错，比如传的参数是字符串"9223372036854775808"(0x7FFFFFFFFFFFFFFF + 1)，转整形后超过了有符号int64的最大值：0x7FFFFFFFFFFFFFFF，所以如果是"L"将解析为0x7FFFFFFFFFFFFFFF。
 
 #### 7.6.2.2 布尔型：b
 通过"b"标识符表示将传入的参数解析为布尔型，解析到的变量必须是zend_bool：
@@ -497,7 +497,7 @@ echo $a;
 
 ### 7.6.4 函数返回值
 调用内部函数时其返回值指针作为参数传入，这个参数为`zval *return_value`，如果函数有返回值直接设置此指针即可，需要特别注意的是设置返回值时需要增加其引用计数，举个例子来看：
-    ```c
+```c
 PHP_FUNCTION(my_func_1)
 {
     zval    *arr;
@@ -510,8 +510,6 @@ PHP_FUNCTION(my_func_1)
     Z_ADDREF_P(arr);
 
     //设置返回值为数组：
-    //return_value->u1.type = IS_ARRAY; 
-    //return_value->value->arr = arr->value->arr;
     ZVAL_ARR(return_value, Z_ARR_P(arr));
 } 
 ```
